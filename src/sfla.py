@@ -1,4 +1,4 @@
-import os, glob, sys, math
+import os, glob, sys, logging, sys
 import concurrent.futures
 import argparse
 
@@ -15,6 +15,15 @@ from utils import matrice_distances
 from utils import Lennard_Jones
 from utils import electrostatic
 from utils import poses
+
+logging.basicConfig(
+    format="%(asctime)s [%(name)s: %(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler("debug.log").setLevel(logging.DEBUG),
+        logging.StreamHandler(sys.stdout).setLevel(logging.INFO)
+    ]
+)
+logger = logging.getLogger(__name__)
 
 MAX_TRANSITION = 15
 
@@ -130,6 +139,7 @@ class SFLA:
         return args
 
     def generate_init_population(self):
+        logger.info(f"Generating initial population (Number of frogs: {self.frogs})")
         self.rand_trans_coord, self.receptor_max_diameter, self.ligand_max_diameter = poses.calculate_initial_poses(self.receptor, 
                                                                                                                     self.ligand, 
                                                                                                                     self.frogs*2)
@@ -145,6 +155,7 @@ class SFLA:
                     self.structinfo[r[1]] = [r[0], r[2], r[3]]
 
     def sort_frog(self):
+        logger.info(f"Sorting the frogs and making {self.mplx_no} memeplexes with {self.frogs} frogs each")
         sorted_fitness = np.array(sorted(self.structinfo, key = lambda x: self.structinfo[x][0]))
 
         memeplexes = np.zeros((self.mplx_no, self.FrogsEach))
@@ -232,6 +243,7 @@ class SFLA:
     def shuffle_memeplexes(self):
         """Shuffles the memeplexes and sorting them.
         """
+        logger.info("Shuffling the memeplexes and sorting them")
         temp = self.memeplexes.flatten()
         temp = np.array(sorted(temp, key = lambda x: self.structinfo[x][0]))
         for j in range(self.FrogsEach):
@@ -239,7 +251,7 @@ class SFLA:
                 self.memeplexes[i, j] = temp[i + (self.mplx_no * j)]    
             
     def run_sfla(self, data_path, protein_name, rec_name, lig_name):
-
+        logger.info("Starting SFLA algorithm")
         self.path = data_path
         self.receptor = Complex(rec_name, data_path)
         self.ligand = Complex(lig_name, data_path)
@@ -256,8 +268,10 @@ class SFLA:
         
         directory = "native_" + protein_name
         final_path = os.path.join("./", directory)
+        logger.info(f"Creating a new directory - {final_path}")
         os.mkdir(final_path)
         # move best global frog to native folder
+        logger.info(f"Moving global best frog to the new directory - {final_path}")
         shutil.move(os.path.join("poses/", "out" + str(self.memeplexes[0][0]) + ".pdb"), directory)
     
     def run_sfla_test(self, data_path, protein_name, rec_name, lig_name):
