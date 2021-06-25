@@ -22,9 +22,9 @@ def calculate_resdepth(structure, pdb_filename, method):
 
     model = structure[0]
     if method == "msms":
-        print("MSMS running for", pdb_filename)
+        #print("MSMS running for", pdb_filename)
         rd = ResidueDepth(model)
-        print("MSMS finished with", pdb_filename)
+        #print("MSMS finished with", pdb_filename)
         mydict = {}
 
         for item in rd.property_list:
