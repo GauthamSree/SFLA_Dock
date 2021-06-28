@@ -194,7 +194,7 @@ class SFLA:
             im: memeplex_idx
         """
         memplex = self.memeplexes[im]
-        extracted_conformation_data = {item:self.conformation_data.get(item) for item in memplex}
+        extracted_conformation_data = {int(item):self.conformation_data.get(item) for item in memplex}
         
         for idx in range(self.no_of_mutation):
             logger.info(f"Local search of Memeplex {im + 1}: Mutation {idx}/{self.no_of_mutation}")
