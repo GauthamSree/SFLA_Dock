@@ -10,7 +10,7 @@ do
 
 	
 	touch  "report_${sub}_${h}.txt"
-	chain=($(python3 sfla.py -pdb ${ja} -n 100 | tr -d '[],'))
+	chain=($(python3 sfla.py --pdb ${ja} -n 100 | tr -d '[],'))
 	echo ${chain[0]}
 
 	ch=()

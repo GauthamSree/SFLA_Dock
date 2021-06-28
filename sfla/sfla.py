@@ -35,7 +35,6 @@ class SFLA:
         self.FrogsEach = int(self.frogs/self.mplx_no)
         self.weights = [2*(self.FrogsEach+1-j)/(self.FrogsEach*(self.FrogsEach+1)) for j in range(1, self.FrogsEach+1)] 
         self.conformation_data = {}
-        self.frogs = 0
         self.mypath ='poses/'
         if not os.path.exists(self.mypath):
             os.mkdir(os.path.join("./", self.mypath))
@@ -58,7 +57,7 @@ class SFLA:
         self._memeplexes = memeplexes
 
     def find_score(self, args):
-        logger.info(f"out{args[1]}.pdb: Calculating score")
+        #logger.info(f"out{args[1]}.pdb: Calculating score")
         output_file = self.write_to_file(args[0], args[1])
         pdbfile = os.path.join(self.mypath, output_file)
         my_struct = pdbtools.read_pdb(pdbfile)
@@ -79,7 +78,7 @@ class SFLA:
         vdw = Lennard_Jones.lennard_jones(dist_matrix=distmat)
         electro = electrostatic.electrostatic(inter_resid_dict=distmat, pH=7)
         score = vdw + electro
-        logger.info(f"out{args[1]}.pdb -- score {score:.3f}")
+        logger.info(f"out{args[1]}.pdb -- score = {score:.3f}")
         return score, args[1], args[2], args[3]
 
     def write_to_file(self, new_coord, id):
@@ -129,6 +128,7 @@ class SFLA:
         return q.normalised
 
     def generate_one_frog(self, unique_id, initial=False):
+        rng = np.random.default_rng(unique_id)
         rec_rand_idx = rng.integers(0, self.receptor.coord.shape[0] - 1)
         lig_rand_idx = rng.integers(0, self.ligand.coord.shape[0] - 1)
         a = self.receptor.coord[rec_rand_idx]
@@ -141,7 +141,7 @@ class SFLA:
         
         quater = self.quaternion_from_vectors(a, b)
         final = self.ligand.tranformation(quater, trans_coord)
-        args = [[final, unique_id, quater, trans_coord]]
+        args = [final, unique_id, quater, trans_coord]
         return args
 
     def generate_init_population(self):
@@ -214,7 +214,7 @@ class SFLA:
             
             # Check feasible space and the performance #
             if np.linalg.norm(trans_coord) <= self.omega:
-                logger.info(f"memeplex {im + 1}-out{unique_id}.pdb: Learn from local best Pb")
+                logger.info(f"Memeplex {im + 1}(out{unique_id}.pdb): Learn from local best Pb")
                 final = self.ligand.tranformation(quart_new, trans_coord)   #final = np.array([Uq.rotate(i) for i in self.lig_atom])  
                 results = self.find_score([final, unique_id, quart_new, trans_coord])
 
@@ -224,7 +224,7 @@ class SFLA:
                 globStep = True
 
             if globStep:
-                logger.info(f"memeplex {im + 1}-out{unique_id}.pdb: score didn't improve... Learn from global best Pb")
+                logger.info(f"Memeplex {im + 1}(out{unique_id}.pdb): score didn't improve... Learn from global best Pb")
                 quart_new, trans_coord = self.new_step(self.Frog_gb[1], self.Frog_gb[2], Pw[1], Pw[2])
               
                 if np.linalg.norm(trans_coord) <= self.omega:
@@ -236,9 +236,9 @@ class SFLA:
                     censorship = True
 
             if censorship:
-                logger.info(f"memeplex {im + 1}-out{unique_id}.pdb: score didn't improve... generating a new frog")
+                logger.info(f"Memeplex {im + 1}(out{unique_id}.pdb): score didn't improve... generating a new frog")
                 params = self.generate_one_frog(unique_id)
-                results = self.find_score(params[0])            
+                results = self.find_score(params)            
 
             shutil.move(os.path.join('poses/', 'out'+str(unique_id)+'.pdb'), os.path.join('poses/', 'out'+ str(submemeplex[self.q-1]) + '.pdb'))
             extracted_conformation_data[int(submemeplex[self.q-1])] = [results[0], results[2], results[3]]
@@ -279,7 +279,7 @@ class SFLA:
         self.memeplexes = self.sort_frog()
         
         self.omega = 2 * self.receptor_max_diameter  # TODO: Two times or One time
-        self.step_size = self.ligand_max_diameter / 4
+        self.step_size = self.ligand_max_diameter / 5
 
         for idx in range(self.no_of_iteration):
             logger.info(f"Local Search: {idx}/{self.no_of_iteration}")
@@ -305,11 +305,11 @@ class SFLA:
         self.memeplexes = self.sort_frog()
         
         self.omega = 2 * self.receptor_max_diameter  # TODO: Two times or One time
-        self.step_size = self.ligand_max_diameter / 4
+        self.step_size = self.ligand_max_diameter / 5
 
     def run_remaining(self):
         for idx in range(5):
-            logger.info(f"Local Search: {idx}/{4}")
+            logger.info(f"Local Search: {idx+1}/{5}")
             self.local_search()
             self.shuffle_memeplexes()
 
@@ -326,5 +326,5 @@ if __name__ == "__main__":
     protein_name = args.pdb.split('/')[-1].split('_')[0]
     rec_lig_name = args.pdb.split('/')[-1].split('_')[1].split(':')
 
-    sfla = SFLA(frogs=200, mplx_no=10, no_of_iteration= n, no_of_mutation=5, q=12)
-    sfla.run_sfla(os.path.join(args, "/"), protein_name, rec_lig_name[0], rec_lig_name[1])
+    sfla = SFLA(frogs=200, mplx_no=10, no_of_iteration=n, no_of_mutation=5, q=12)
+    sfla.run_sfla(args.pdb, protein_name, rec_lig_name[0], rec_lig_name[1])

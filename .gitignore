@@ -8,3 +8,17 @@ __pycache__/
 *_model_st1.pdb
 debug.log
 Result/
+
+
+# DockQ
+DockQ.py
+fnat*
+molecule.o
+clean.bash
+src/
+scripts/
+
+#testing
+debug1.log
+report_4dn4_0.txt
+4dn4/
