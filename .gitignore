@@ -5,4 +5,6 @@ __pycache__/
 .ipynb_checkpoints
 .vscode
 .DS_Store
+*_model_st1.pdb
+debug.log
 Result/

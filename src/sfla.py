@@ -1,8 +1,6 @@
-import os, glob, sys, logging, sys
+import os, sys, logging
+import argparse, shutil
 import concurrent.futures
-import argparse
-
-import shutil
 
 import numpy as np
 from Bio.PDB import *
@@ -17,30 +15,32 @@ from utils import electrostatic
 from utils import poses
 
 logging.basicConfig(
+    level=logging.DEBUG,
     format="%(asctime)s [%(name)s: %(levelname)s] %(message)s",
     handlers=[
-        logging.FileHandler("debug.log").setLevel(logging.DEBUG),
-        logging.StreamHandler(sys.stdout).setLevel(logging.INFO)
+        logging.FileHandler("debug.log"),
+        logging.StreamHandler(sys.stdout)
     ]
 )
-logger = logging.getLogger(__name__)
 
-MAX_TRANSITION = 15
+logger = logging.getLogger(__name__)
 
 rng = np.random.default_rng(0)
 
 
 class SFLA:
-    def __init__(self, frogs, mplx_no, n_iter, N, q):
+    def __init__(self, frogs, mplx_no, no_of_iteration, no_of_mutation, q):
         self.frogs = frogs
         self.mplx_no = mplx_no
         self.FrogsEach = int(self.frogs/self.mplx_no)
         self.weights = [2*(self.FrogsEach+1-j)/(self.FrogsEach*(self.FrogsEach+1)) for j in range(1, self.FrogsEach+1)] 
-        self.structinfo = {}
-        self.init = 0
+        self.conformation_data = {}
+        self.frogs = 0
         self.mypath ='poses/'
-        self.n_iter = n_iter
-        self.N = N
+        if not os.path.exists(self.mypath):
+            os.mkdir(os.path.join("./", self.mypath))
+        self.no_of_iteration = no_of_iteration
+        self.no_of_mutation = no_of_mutation
         self.q = q
     
     def __repr__(self):
@@ -48,17 +48,22 @@ class SFLA:
     
     def __str__(self):
         return f"SFLA (Frogs = {self.frogs}, Memeplexes = {self.mplx_no})"
-    
+
+    @property
+    def memeplexes(self):
+        return self._memeplexes
+
+    @memeplexes.setter
+    def memeplexes(self, memeplexes):
+        self._memeplexes = memeplexes
+
     def find_score(self, args):
-        logger.info(f"out{args[1]}.pdb -- Calculating score")
+        logger.info(f"out{args[1]}.pdb: Calculating score")
         output_file = self.write_to_file(args[0], args[1])
-        pH = 7
-        dist = 8.6
-        depth = "msms"
         pdbfile = os.path.join(self.mypath, output_file)
         my_struct = pdbtools.read_pdb(pdbfile)
         try:
-            depth_dict = pdb_resdepth.calculate_resdepth(structure=my_struct, pdb_filename=pdbfile, method=depth)
+            depth_dict = pdb_resdepth.calculate_resdepth(structure=my_struct, pdb_filename=pdbfile, method="msms")
         except:
             return
         
@@ -67,12 +72,12 @@ class SFLA:
             depth=depth_dict,
             chain_R=self.receptor.chain,
             chain_L=self.ligand.chain,
-            dist_max=dist,
-            method=depth,
+            dist_max=8.6,
+            method="msms",
         )
 
         vdw = Lennard_Jones.lennard_jones(dist_matrix=distmat)
-        electro = electrostatic.electrostatic(inter_resid_dict=distmat, pH=pH)
+        electro = electrostatic.electrostatic(inter_resid_dict=distmat, pH=7)
         score = vdw + electro
         logger.info(f"out{args[1]}.pdb -- score {score:.3f}")
         return score, args[1], args[2], args[3]
@@ -123,41 +128,43 @@ class SFLA:
         
         return q.normalised
 
-    def generate_one_frog(self, uid, initial=False):
+    def generate_one_frog(self, unique_id, initial=False):
         rec_rand_idx = rng.integers(0, self.receptor.coord.shape[0] - 1)
         lig_rand_idx = rng.integers(0, self.ligand.coord.shape[0] - 1)
         a = self.receptor.coord[rec_rand_idx]
         b = self.ligand.coord[lig_rand_idx]
         if initial:
-            trans_coord = self.rand_trans_coord[uid]
+            trans_coord = self.rand_trans_coord[unique_id]
         else:
-            trans_rand_idx = rng.integers(self.frogs, self.rand_trans_coord.shape[0] - 1)
-            trans_coord = self.rand_trans_coord[trans_rand_idx]
+            trans_rand_idx = rng.integers(0, self.censorship_trans_coord.shape[0] - 1)
+            trans_coord = self.censorship_trans_coord[trans_rand_idx]
         
         quater = self.quaternion_from_vectors(a, b)
         final = self.ligand.tranformation(quater, trans_coord)
-        args = [[final, uid, quater, trans_coord]]
+        args = [[final, unique_id, quater, trans_coord]]
         return args
 
     def generate_init_population(self):
         logger.info(f"Generating initial population (Number of frogs: {self.frogs})")
-        self.rand_trans_coord, self.receptor_max_diameter, self.ligand_max_diameter = poses.calculate_initial_poses(self.receptor, 
-                                                                                                                    self.ligand, 
-                                                                                                                    self.frogs*2)
+        (
+            self.rand_trans_coord,
+            self.receptor_max_diameter,
+            self.ligand_max_diameter,
+        ) = poses.calculate_initial_poses(self.receptor, self.ligand, self.frogs)
+        
+        self.censorship_trans_coord, _, _ = poses.calculate_initial_poses(
+            self.receptor, self.ligand, self.frogs, divide_by=3
+        )
         with concurrent.futures.ProcessPoolExecutor() as executor:
-            Doargs = []
-            for _ in range(self.frogs):
-                Doargs += self.generate_one_frog(self.init, initial=True)
-                self.init += 1
-            
-            results = executor.map(self.find_score, Doargs)
+            score_args = [self.generate_one_frog(frog_id, initial=True) for frog_id in range(self.frogs)]
+            results = executor.map(self.find_score, score_args)
             for r in results:
                 if r:
-                    self.structinfo[r[1]] = [r[0], r[2], r[3]]
+                    self.conformation_data[r[1]] = [r[0], r[2], r[3]]
 
     def sort_frog(self):
         logger.info(f"Sorting the frogs and making {self.mplx_no} memeplexes with {self.frogs} frogs each")
-        sorted_fitness = np.array(sorted(self.structinfo, key = lambda x: self.structinfo[x][0]))
+        sorted_fitness = np.array(sorted(self.conformation_data, key = lambda x: self.conformation_data[x][0]))
 
         memeplexes = np.zeros((self.mplx_no, self.FrogsEach))
 
@@ -184,20 +191,22 @@ class SFLA:
 
     def local_search_one_memeplex(self, im):
         """
-            q: The number of frogs in submemeplex
-            N: No of mutations
+            im: memeplex_idx
         """
-        for idx in range(self.N):
-            logger.info(f"Local search of Memeplex {im + 1}: Mutation {idx}/{self.N}")
-            uId = self.init + im + 1
+        memplex = self.memeplexes[im]
+        extracted_conformation_data = {item:self.conformation_data.get(item) for item in memplex}
+        
+        for idx in range(self.no_of_mutation):
+            logger.info(f"Local search of Memeplex {im + 1}: Mutation {idx}/{self.no_of_mutation}")
+            unique_id = self.frogs + im + 1
             rValue = rng.random(self.FrogsEach) * self.weights                      # random value with probability weights
             subindex = np.sort(np.argsort(rValue)[::-1][0:self.q])                  # index of selected frogs in memeplex
-            submemeplex = self.memeplexes[im][subindex] 
+            submemeplex = memplex[subindex] 
 
             #--- Improve the worst frog's position ---#
             # Learn from local best Pb #
-            Pb = self.structinfo[int(submemeplex[0])]                               # mark the best frog in submemeplex
-            Pw = self.structinfo[int(submemeplex[self.q - 1])]                      # mark the worst frog in submemeplex
+            Pb = extracted_conformation_data[int(submemeplex[0])]                               # mark the best frog in submemeplex
+            Pw = extracted_conformation_data[int(submemeplex[self.q - 1])]                      # mark the worst frog in submemeplex
             quart_new, trans_coord = self.new_step(Pb[1], Pb[2], Pw[1], Pw[2])
 
             globStep = False
@@ -205,9 +214,9 @@ class SFLA:
             
             # Check feasible space and the performance #
             if np.linalg.norm(trans_coord) <= self.omega:
-                logger.info(f"out{uId}.pdb: Learn from local best Pb")
+                logger.info(f"memeplex {im + 1}-out{unique_id}.pdb: Learn from local best Pb")
                 final = self.ligand.tranformation(quart_new, trans_coord)   #final = np.array([Uq.rotate(i) for i in self.lig_atom])  
-                results = self.find_score([final, uId, quart_new, trans_coord])
+                results = self.find_score([final, unique_id, quart_new, trans_coord])
 
                 if results[0] > Pw[0]:
                     globStep = True
@@ -215,42 +224,47 @@ class SFLA:
                 globStep = True
 
             if globStep:
-                logger.info(f"out{uId}.pdb: Learn from global best Pb since score didn't improve")
+                logger.info(f"memeplex {im + 1}-out{unique_id}.pdb: score didn't improve... Learn from global best Pb")
                 quart_new, trans_coord = self.new_step(self.Frog_gb[1], self.Frog_gb[2], Pw[1], Pw[2])
               
                 if np.linalg.norm(trans_coord) <= self.omega:
                     final = self.ligand.tranformation(quart_new, trans_coord)   #final = np.array([Uq.rotate(i) for i in self.lig_atom])  
-                    results = self.find_score([final, uId, quart_new, trans_coord])
+                    results = self.find_score([final, unique_id, quart_new, trans_coord])
                     if results[0] > Pw[0]:
                         censorship = True
                 else:
                     censorship = True
 
             if censorship:
-                logger.info(f"out{uId}.pdb: generating a new frog since score didn't improve")
-                params = self.generate_one_frog(uId)
-                results = self.find_score(params)            
+                logger.info(f"memeplex {im + 1}-out{unique_id}.pdb: score didn't improve... generating a new frog")
+                params = self.generate_one_frog(unique_id)
+                results = self.find_score(params[0])            
 
+            shutil.move(os.path.join('poses/', 'out'+str(unique_id)+'.pdb'), os.path.join('poses/', 'out'+ str(submemeplex[self.q-1]) + '.pdb'))
+            extracted_conformation_data[int(submemeplex[self.q-1])] = [results[0], results[2], results[3]]
+            memplex = np.array(sorted(extracted_conformation_data, key = lambda x: extracted_conformation_data[x][0]))
+            logger.info(f"Local search of Memeplex {im + 1}: Mutation {idx + 1}/{self.no_of_mutation} finished")
 
-            shutil.move(os.path.join('poses/', 'out'+str(uId)+'.pdb'), os.path.join('poses/', 'out'+ str(submemeplex[self.q-1]) + '.pdb'))
-            self.structinfo[int(submemeplex[self.q-1])] = [results[0], results[2], results[3]]
-            self.memeplexes[im] = self.memeplexes[im][np.argsort(self.memeplexes[im])]
-            logger.info(f"Local search of Memeplex {im + 1}: Mutation {idx}/{self.N} finished")
-
-         
+        return (extracted_conformation_data, im, memplex)
+      
     def local_search(self):
-        self.Frog_gb = self.structinfo[int(self.memeplexes[0][0])]
+        self.Frog_gb = self.conformation_data[int(self.memeplexes[0][0])]
 
         with concurrent.futures.ProcessPoolExecutor() as executor:
             doargs = [im for im, _ in enumerate(self.memeplexes)]
             results = executor.map(self.local_search_one_memeplex, doargs)
-
+            
+            for r in results:
+                if r:
+                    self.conformation_data.update(r[0])
+                    self.memeplexes[r[1]] = r[2]
+    
     def shuffle_memeplexes(self):
         """Shuffles the memeplexes and sorting them.
         """
         logger.info("Shuffling the memeplexes and sorting them")
         temp = self.memeplexes.flatten()
-        temp = np.array(sorted(temp, key = lambda x: self.structinfo[x][0]))
+        temp = np.array(sorted(temp, key = lambda x: self.conformation_data[x][0]))
         for j in range(self.FrogsEach):
             for i in range(self.mplx_no):
                 self.memeplexes[i, j] = temp[i + (self.mplx_no * j)]    
@@ -267,8 +281,8 @@ class SFLA:
         self.omega = 2 * self.receptor_max_diameter  # TODO: Two times or One time
         self.step_size = self.ligand_max_diameter / 4
 
-        for idx in range(self.n_iter):
-            logger.info(f"Local Search: {idx}/{self.n_iter}")
+        for idx in range(self.no_of_iteration):
+            logger.info(f"Local Search: {idx}/{self.no_of_iteration}")
             self.local_search()
             self.shuffle_memeplexes()
         
@@ -277,8 +291,9 @@ class SFLA:
         logger.info(f"Creating a new directory - {final_path}")
         os.mkdir(final_path)
         # move best global frog to native folder
-        logger.info(f"Moving global best frog to the new directory - {final_path}")
-        shutil.move(os.path.join("poses/", "out" + str(self.memeplexes[0][0]) + ".pdb"), directory)
+        logger.info(f"Moving best frog from each memeplexes to the new directory - {final_path}")
+        for im, _ in enumerate(self.memeplexes):
+            shutil.move(os.path.join("poses/", "out" + str(self.memeplexes[im][0]) + ".pdb"), directory)
     
     def run_sfla_test(self, data_path, protein_name, rec_name, lig_name):
         logger.info("Starting SFLA algorithm")
@@ -293,8 +308,23 @@ class SFLA:
         self.step_size = self.ligand_max_diameter / 4
 
     def run_remaining(self):
-        for _ in range(2):
-            logger.info(f"Local Search: {idx}/{self.n_iter}")
+        for idx in range(5):
+            logger.info(f"Local Search: {idx}/{4}")
             self.local_search()
             self.shuffle_memeplexes()
-        
+
+    
+if __name__ == "__main__":
+    #"Data/4dn4_LH:M"
+
+    parser = argparse.ArgumentParser(description='Shuffled Frog Leap Algorithm (SFLA)')
+    parser.add_argument('-p', '--pdb', type=str, required=True, help='PDB File Directory')
+    parser.add_argument('-n', type=int, required=True, help='Number of Iterations')
+    args = parser.parse_args()
+    
+    n = args.n
+    protein_name = args.pdb.split('/')[-1].split('_')[0]
+    rec_lig_name = args.pdb.split('/')[-1].split('_')[1].split(':')
+
+    sfla = SFLA(frogs=200, mplx_no=10, no_of_iteration= n, no_of_mutation=5, q=12)
+    sfla.run_sfla(os.path.join(args, "/"), protein_name, rec_lig_name[0], rec_lig_name[1])

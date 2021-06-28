@@ -23,14 +23,14 @@ def points_on_sphere(number_of_points):
     return points
 
 
-def calculate_initial_poses(receptor: Complex, ligand: Complex, num_points: int, num_sphere_points: int =20):
+def calculate_initial_poses(receptor: Complex, ligand: Complex, num_points: int, divide_by=2.0, num_sphere_points: int=20):
     """Calculates the position of num_points on the surface of the given protein"""
 
     distances_matrix_rec = distance.pdist(receptor.atom_coord)
     receptor_max_diameter = np.max(distances_matrix_rec)
     distances_matrix_lig = distance.pdist(ligand.atom_coord )
     ligand_max_diameter = np.max(distances_matrix_lig)
-    surface_distance = ligand_max_diameter / 2.0
+    surface_distance = ligand_max_diameter / divide_by
 
     coords = receptor.coord
 
