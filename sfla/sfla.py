@@ -1,3 +1,4 @@
+from enum import unique
 import os, sys, logging
 import argparse, shutil
 import concurrent.futures
@@ -15,7 +16,7 @@ from utils import electrostatic
 from utils import poses
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format="%(asctime)s [%(name)s: %(levelname)s] %(message)s",
     handlers=[
         logging.FileHandler("debug.log"),
@@ -174,7 +175,12 @@ class SFLA:
         return memeplexes
 
     def clip_the_point_max_step(self, worst_frog_coord, best_frog_coord):
-        t = self.step_size/np.linalg.norm(worst_frog_coord - best_frog_coord)
+        norm = np.linalg.norm(worst_frog_coord - best_frog_coord)
+        if not np.isnan(norm) and norm < 0.00001:
+            value = (worst_frog_coord - best_frog_coord)
+            t = self.step_size/value if (value > self.step_size) else 0.1
+        else: 
+            t = self.step_size/np.linalg.norm(worst_frog_coord - best_frog_coord)
         new_coord = (1 - t) * worst_frog_coord + (t * best_frog_coord)
         return new_coord
 
@@ -182,7 +188,7 @@ class SFLA:
         quart_new = Quaternion.slerp(quart_worst, quart_best, rng.random())
         shift_coord = (tran_coord_best - tran_coord_worst) * rng.random()
         
-        if np.linalg.norm(tran_coord_worst - shift_coord) >= self.step_size:
+        if np.linalg.norm(tran_coord_worst - shift_coord) > self.step_size:
             trans_coord = self.clip_the_point_max_step(tran_coord_worst, tran_coord_best)
         else:
             trans_coord = tran_coord_worst + shift_coord
@@ -197,7 +203,7 @@ class SFLA:
         extracted_conformation_data = {int(item):self.conformation_data.get(item) for item in memplex}
         
         for idx in range(self.no_of_mutation):
-            logger.info(f"Local search of Memeplex {im + 1}: Mutation {idx}/{self.no_of_mutation}")
+            logger.info(f"Local search of Memeplex {im + 1}: Mutation {idx + 1}/{self.no_of_mutation}")
             unique_id = self.frogs + im + 1
             rValue = rng.random(self.FrogsEach) * self.weights                      # random value with probability weights
             subindex = np.sort(np.argsort(rValue)[::-1][0:self.q])                  # index of selected frogs in memeplex
@@ -240,7 +246,7 @@ class SFLA:
                 params = self.generate_one_frog(unique_id)
                 results = self.find_score(params)            
 
-            shutil.move(os.path.join('poses/', 'out'+str(unique_id)+'.pdb'), os.path.join('poses/', 'out'+ str(submemeplex[self.q-1]) + '.pdb'))
+            shutil.move(os.path.join('poses/', 'out'+str(int(unique_id))+'.pdb'), os.path.join('poses/', 'out'+ str(int(submemeplex[self.q-1])) + '.pdb'))
             extracted_conformation_data[int(submemeplex[self.q-1])] = [results[0], results[2], results[3]]
             memplex = np.array(sorted(extracted_conformation_data, key = lambda x: extracted_conformation_data[x][0]))
             logger.info(f"Local search of Memeplex {im + 1}: Mutation {idx + 1}/{self.no_of_mutation} finished")
@@ -282,18 +288,22 @@ class SFLA:
         self.step_size = self.ligand_max_diameter / 5
 
         for idx in range(self.no_of_iteration):
-            logger.info(f"Local Search: {idx}/{self.no_of_iteration}")
+            logger.info(f"Local Search: {idx+1}/{self.no_of_iteration}")
             self.local_search()
             self.shuffle_memeplexes()
         
         directory = "native_" + protein_name
         final_path = os.path.join("./", directory)
         logger.info(f"Creating a new directory - {final_path}")
-        os.mkdir(final_path)
+        if not os.path.exists(final_path):
+            os.mkdir(final_path)
         # move best global frog to native folder
-        logger.info(f"Moving best frog from each memeplexes to the new directory - {final_path}")
-        for im, _ in enumerate(self.memeplexes):
-            shutil.move(os.path.join("poses/", "out" + str(self.memeplexes[im][0]) + ".pdb"), directory)
+        logger.info(f"Moving best frog from each memeplexes to the new directory - {final_path} and saving the best energy.")
+        with open("best_energy.txt", 'w') as best_eng:                
+            for im, memeplex in enumerate(self.memeplexes):
+                unique_id = int(memeplex[0])
+                best_eng.write(f"Memeplex {im+1} (out{str(unique_id)}.pdb) --- Score: {self.conformation_data[unique_id][0]}\n")
+                shutil.move(os.path.join("poses/", "out" + str(unique_id) + ".pdb"), directory)
     
     def run_sfla_test(self, data_path, protein_name, rec_name, lig_name):
         logger.info("Starting SFLA algorithm")
@@ -326,5 +336,6 @@ if __name__ == "__main__":
     protein_name = args.pdb.split('/')[-1].split('_')[0]
     rec_lig_name = args.pdb.split('/')[-1].split('_')[1].split(':')
 
-    sfla = SFLA(frogs=200, mplx_no=10, no_of_iteration=n, no_of_mutation=5, q=12)
-    sfla.run_sfla(args.pdb, protein_name, rec_lig_name[0], rec_lig_name[1])
+    #sfla = SFLA(frogs=200, mplx_no=10, no_of_iteration=n, no_of_mutation=5, q=12)
+    sfla = SFLA(frogs=50, mplx_no=10, no_of_iteration=n, no_of_mutation=2, q=4)
+    sfla.run_sfla(str(args.pdb), protein_name, rec_lig_name[0], rec_lig_name[1])

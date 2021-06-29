@@ -19,6 +19,10 @@ src/
 scripts/
 
 #testing
-debug1.log
+debug*
 report_4dn4_0.txt
 4dn4/
+4dn4_test/
+best_energy1.txt
+native_4dn4_send
+sfladock_old.sh
