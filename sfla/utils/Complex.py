@@ -50,7 +50,7 @@ class Complex:
         self.atom_coord = atom_coord
         self.atom_mass = np.array(atom_mass)
         self.COM = self.find_center_of_mass()
-        self.move_to_origin(inplace=True)
+        #self.move_to_origin(inplace=True)
 
         idx = 0
         with open(os.path.join(self.path, file + ".pdb"), "r") as pdb_in: 

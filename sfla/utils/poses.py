@@ -56,3 +56,8 @@ def calculate_initial_poses(receptor: Complex, ligand: Complex, num_points: int,
         sampling = s_clusters[0]
 
     return sampling, receptor_max_diameter, ligand_max_diameter
+
+def generate_new_pose(rec_coord, ligand_max_diameter, rng):
+    surface_distance = ligand_max_diameter / 2.0
+    trans_coord = (rng.random()) * surface_distance + (1.5 * rec_coord)
+    return trans_coord
