@@ -238,7 +238,7 @@ class SFLA:
 
             if censorship:
                 logger.info(f"Iteration {iter_idx} -- Memeplex {im + 1}(out{unique_id}.pdb): score didn't improve... generating a new frog")
-                params = self.generate_one_frog_test(unique_id)
+                params = self.generate_one_frog(unique_id)
                 results = self.find_score(params)            
 
             shutil.move(os.path.join('poses/', 'out'+str(int(unique_id))+'.pdb'), os.path.join('poses/', 'out'+ str(int(submemeplex[self.q-1])) + '.pdb'))
