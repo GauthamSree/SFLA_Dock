@@ -214,7 +214,7 @@ class SFLA:
             censorship = False
             
             # Check feasible space and the performance #
-            if np.linalg.norm(trans_coord) <= self.omega:
+            if np.linalg.norm(self.receptor.COM - trans_coord) <= self.omega:
                 logger.info(f"Iteration {iter_idx} -- Memeplex {im + 1}(out{unique_id}.pdb): Learn from local best Pb")
                 final = self.ligand.tranformation(quart_new, trans_coord)   #final = np.array([Uq.rotate(i) for i in self.lig_atom])  
                 results = self.find_score([final, unique_id, quart_new, trans_coord])
@@ -228,7 +228,7 @@ class SFLA:
                 logger.info(f"Iteration {iter_idx} -- Memeplex {im + 1}(out{unique_id}.pdb): score didn't improve... Learn from global best Pb")
                 quart_new, trans_coord = self.new_step(self.Frog_gb[1], self.Frog_gb[2], Pw[1], Pw[2])
               
-                if np.linalg.norm(trans_coord) <= self.omega:
+                if np.linalg.norm(self.receptor.COM - trans_coord) <= self.omega:
                     final = self.ligand.tranformation(quart_new, trans_coord)   #final = np.array([Uq.rotate(i) for i in self.lig_atom])  
                     results = self.find_score([final, unique_id, quart_new, trans_coord])
                     if results[0] > Pw[0] and results[0] > 0:
@@ -280,7 +280,7 @@ class SFLA:
         self.generate_init_population()
         self.memeplexes = self.sort_frog()
         
-        self.omega = 2 * self.receptor_max_diameter  # TODO: Two times or One time
+        self.omega = 1.5 * self.receptor_max_diameter  # TODO: Trying 1.5
         self.step_size = 1
 
         for idx in range(self.no_of_iteration):
@@ -316,7 +316,7 @@ class SFLA:
         self.generate_init_population()
         self.memeplexes = self.sort_frog()
         
-        self.omega = 2 * self.receptor_max_diameter  # TODO: Two times or One time
+        self.omega = 1.5 * self.receptor_max_diameter  # TODO: Two times or One time
         self.step_size = 1
 
     def run_remaining(self):
@@ -338,6 +338,6 @@ if __name__ == "__main__":
     protein_name = args.pdb.split('/')[-1].split('_')[0]
     rec_lig_name = args.pdb.split('/')[-1].split('_')[1].split(':')
 
-    sfla = SFLA(frogs=200, mplx_no=10, no_of_iteration=n, no_of_mutation=5, q=12)
+    sfla = SFLA(frogs=360, mplx_no=30, no_of_iteration=n, no_of_mutation=12, q=12)  # TODO: 400, 40 
     #sfla = SFLA(frogs=50, mplx_no=10, no_of_iteration=n, no_of_mutation=2, q=4)
     sfla.run_sfla(str(args.pdb), protein_name, rec_lig_name[0], rec_lig_name[1])
