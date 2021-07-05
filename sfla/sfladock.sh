@@ -12,7 +12,8 @@ do
 		touch "report_${PROTEIN}_${h}.txt"
 		#Python SFLA
 		#python3 sfla.py --pdb ${DATAPTH} -n 1
-		VAL=($(python3 sfla.py --pdb ${DATAPTH} -n 100 | tr -d '[],'))
+		#VAL=($(python3 sfla.py --pdb ${DATAPTH} -n 100 | tr -d '[],'))
+		VAL=($(python3 sfla_dfire.py --pdb ${DATAPTH} -n 100 | tr -d '[],'))
 
 		CHAIN="$(cut -d ':' -f 1 <<< $(cut -d '_' -f 2 <<< $EXTRACTED))"
 		RESULT=(native_${PROTEIN}/*)

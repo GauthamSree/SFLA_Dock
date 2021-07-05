@@ -87,8 +87,7 @@ class SFLA:
     def find_score_dfire(self, args):
         #logger.info(f"out{args[1]}.pdb: Calculating score")
         output_file = self.write_to_file(args[0], args[1])
-        dfire_score, interface_receptor, interface_ligand = self.dfire_model(self.receptor, self.receptor.atom_coord, self.ligand, args[0])
-        print(interface_receptor, interface_ligand)
+        dfire_score = self.dfire_model(self.receptor, self.receptor.atom_coord, self.ligand, args[0])
         logger.info(f"out{args[1]}.pdb -- score = {dfire_score:.3f}")
         return dfire_score, args[1], args[2], args[3]
 
@@ -185,7 +184,7 @@ class SFLA:
 
     def sort_frog(self):
         logger.info(f"Sorting the frogs and making {self.mplx_no} memeplexes with {self.frogs} frogs each")
-        sorted_fitness = np.array(sorted(self.conformation_data, key = lambda x: self.conformation_data[x][0]))
+        sorted_fitness = np.array(sorted(self.conformation_data, key = lambda x: self.conformation_data[x][0], reverse=True))
 
         memeplexes = np.zeros((self.mplx_no, self.FrogsEach))
 
@@ -244,7 +243,7 @@ class SFLA:
                 final = self.ligand.tranformation(quart_new, trans_coord)   #final = np.array([Uq.rotate(i) for i in self.lig_atom])  
                 results = self.find_score_dfire([final, unique_id, quart_new, trans_coord])
 
-                if results[0] > Pw[0]:
+                if results[0] < Pw[0]:
                     globStep = True
             else: 
                 globStep = True
@@ -256,7 +255,7 @@ class SFLA:
                 if np.linalg.norm(self.receptor.COM - trans_coord) <= self.omega:
                     final = self.ligand.tranformation(quart_new, trans_coord)   #final = np.array([Uq.rotate(i) for i in self.lig_atom])  
                     results = self.find_score_dfire([final, unique_id, quart_new, trans_coord])
-                    if results[0] > Pw[0]:
+                    if results[0] < Pw[0]:
                         censorship = True
                 else:
                     censorship = True
@@ -268,7 +267,7 @@ class SFLA:
 
             shutil.move(os.path.join('poses/', 'out'+str(int(unique_id))+'.pdb'), os.path.join('poses/', 'out'+ str(int(submemeplex[self.q-1])) + '.pdb'))
             extracted_conformation_data[int(submemeplex[self.q-1])] = [results[0], results[2], results[3]]
-            memplex = np.array(sorted(extracted_conformation_data, key = lambda x: extracted_conformation_data[x][0]))
+            memplex = np.array(sorted(extracted_conformation_data, key = lambda x: extracted_conformation_data[x][0], reverse=True))
             logger.info(f"Iteration {iter_idx} -- Local search of Memeplex {im + 1}: pose moved to out{int(submemeplex[self.q-1])}.pdb ::: Mutation {idx + 1}/{self.no_of_mutation} finished")
 
         return (extracted_conformation_data, im, memplex)
@@ -361,7 +360,7 @@ class SFLA:
         """
         logger.info("Shuffling the memeplexes and sorting them")
         temp = self.memeplexes.flatten()
-        temp = np.array(sorted(temp, key = lambda x: self.conformation_data[x][0]))
+        temp = np.array(sorted(temp, key = lambda x: self.conformation_data[x][0], reverse=True))
         for j in range(self.FrogsEach):
             for i in range(self.mplx_no):
                 self.memeplexes[i, j] = temp[i + (self.mplx_no * j)]    
@@ -382,7 +381,7 @@ class SFLA:
         self.generate_init_population_dfire()
         self.memeplexes = self.sort_frog()
         
-        self.omega = 1.25 * self.receptor_max_diameter
+        self.omega = 1.5 * self.receptor_max_diameter
         self.step_size = 1
 
         for idx in range(self.no_of_iteration):
@@ -425,7 +424,7 @@ class SFLA:
         self.generate_init_population_dfire()
         self.memeplexes = self.sort_frog()
         
-        self.omega = 1.25 * self.receptor_max_diameter  # TODO: Two times or One time
+        self.omega = 1.5 * self.receptor_max_diameter  # TODO: Two times or One time
         self.step_size = 1
 
     def run_remaining(self):
@@ -447,6 +446,6 @@ if __name__ == "__main__":
     protein_name = args.pdb.split('/')[-1].split('_')[0]
     rec_lig_name = args.pdb.split('/')[-1].split('_')[1].split(':')
 
-    sfla = SFLA(frogs=360, mplx_no=30, no_of_iteration=n, no_of_mutation=12, q=8)  # TODO: 400, 40, n, 10, 6 
+    sfla = SFLA(frogs=400, mplx_no=40, no_of_iteration=n, no_of_mutation=10, q=6)  # TODO: 400, 40, n, 10, 6 
     #sfla = SFLA(frogs=50, mplx_no=10, no_of_iteration=n, no_of_mutation=2, q=4)
     sfla.run_sfla(str(args.pdb), protein_name, rec_lig_name[0], rec_lig_name[1])

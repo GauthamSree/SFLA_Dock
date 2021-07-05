@@ -1,35 +1,33 @@
 import scipy.spatial.distance
 import numpy as np
+import os
+from Bio.PDB.PDBExceptions import PDBConstructionWarning
+import warnings
+warnings.simplefilter('ignore', PDBConstructionWarning)
 
-DEFAULT_CONTACT_RESTRAINTS_CUTOFF = 3.9
 
 def calculate_dfire(receptor, receptor_coordinates, ligand, ligand_coordinates, 
-                        dfire_dist_to_bins, dfire_energy, interface_cutoff=3.9):
+                        dfire_dist_to_bins, dfire_energy):
     dist_matrix = scipy.spatial.distance.cdist(receptor_coordinates, ligand_coordinates)
     atom_indexes = np.where(dist_matrix <= 15.)
     dist_matrix *= 2.0
     dist_matrix -= 1.0
     energy = 0.
-    interface_receptor = []
-    interface_ligand = []
-    
+   
     for i,j in zip(atom_indexes[0], atom_indexes[1]):
-        rec_atom = receptor.objects[i]
-        lig_atom = ligand.objects[j]
+        rec_atom = receptor.dfire_objects[i]
+        lig_atom = ligand.dfire_objects[j]
         rnuma = rec_atom.dfire_residue_index
         anuma = rec_atom.atom_index
         rnumb = lig_atom.dfire_residue_index
         anumb = lig_atom.atom_index
         # convert numpy.float64 to int
         d = int(dist_matrix[i][j])
-        if d <= interface_cutoff:
-            interface_receptor.append(i)
-            interface_ligand.append(j)
         dfire_bin = dfire_dist_to_bins[d]-1
         energy += dfire_energy[rnuma][anuma][rnumb][anumb][dfire_bin]
     
     # Convert and change energy sign
-    return (energy * 0.0157 - 4.7) * -1., set(interface_receptor), set(interface_ligand)
+    return (energy * 0.0157 - 4.7) * -1.
 
 
 class DFIREObject:
@@ -93,6 +91,7 @@ class DFIREPotential:
                         'LYSCG', 'LYSCD', 'LYSCE', 'LYSNZ', 'PRON', 'PROCA', 'PROC', 'PROO', 'PROCB', 'PROCG', 'PROCD']
 
     def __init__(self):
+        data_path = os.path.dirname(os.path.realpath(__file__)) + '/data/'
 
         self.r3_to_numerical = {}
         for x in range(len(DFIREPotential.RES_3)):
@@ -104,7 +103,7 @@ class DFIREPotential:
                 name = '%s%s' % (DFIREPotential.RES_3[x], DFIREPotential.atoms_in_residues[DFIREPotential.RES_3[x]][y])
                 self.atomnumber[name] = y
 
-        self.dfire_energy = self._read_potentials('./data/DCparams')
+        self.dfire_energy = self._read_potentials(data_path + 'DCparams')
 
     def _read_potentials(self, data_file_name):
         """Reads DFIRE data potentials"""
@@ -171,13 +170,9 @@ class DFIRE:
     def __init__(self, weight=1.0):
         self.weight = float(weight)
         self.potential = DFIREPotential()
-        self.cutoff = DEFAULT_CONTACT_RESTRAINTS_CUTOFF 
 
     def __call__(self, receptor, receptor_coordinates, ligand, ligand_coordinates):
-        energy, interface_receptor, interface_ligand = calculate_dfire(receptor, receptor_coordinates, 
-                                                                       ligand, ligand_coordinates,
-                                                                       self.potential.dfire_dist_to_bins, 
-                                                                       self.potential.dfire_energy,
-                                                                       interface_cutoff=self.cutoff)
+        energy = calculate_dfire(receptor, receptor_coordinates, ligand, ligand_coordinates,
+        self.potential.dfire_dist_to_bins, self.potential.dfire_energy)
 
-        return (energy * self.weight), interface_receptor, interface_ligand
+        return (energy * self.weight)
