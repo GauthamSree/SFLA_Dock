@@ -1,4 +1,3 @@
-from enum import unique
 import os, sys, logging
 import argparse, shutil
 import concurrent.futures
@@ -8,11 +7,6 @@ from Bio.PDB import *
 from pyquaternion import Quaternion
 
 from utils.Complex import Complex
-from utils import pdbtools
-from utils import pdb_resdepth
-from utils import matrice_distances
-from utils import Lennard_Jones
-from utils import electrostatic
 from utils import poses
 from utils import dfire
 
@@ -58,31 +52,6 @@ class SFLA:
     @memeplexes.setter
     def memeplexes(self, memeplexes):
         self._memeplexes = memeplexes
-
-    def find_score(self, args):
-        #logger.info(f"out{args[1]}.pdb: Calculating score")
-        output_file = self.write_to_file(args[0], args[1])
-        pdbfile = os.path.join(self.mypath, output_file)
-        my_struct = pdbtools.read_pdb(pdbfile)
-        try:
-            depth_dict = pdb_resdepth.calculate_resdepth(structure=my_struct, pdb_filename=pdbfile, method="msms")
-        except:
-            return
-        
-        distmat = matrice_distances.calc_distance_matrix(
-            structure=my_struct,
-            depth=depth_dict,
-            chain_R=self.receptor.chain,
-            chain_L=self.ligand.chain,
-            dist_max=8.6,
-            method="msms",
-        )
-
-        vdw = Lennard_Jones.lennard_jones(dist_matrix=distmat)
-        electro = electrostatic.electrostatic(inter_resid_dict=distmat, pH=7)
-        score = vdw + electro
-        logger.info(f"out{args[1]}.pdb -- score = {score:.3f}")
-        return score, args[1], args[2], args[3]
 
     def find_score_dfire(self, args):
         #logger.info(f"out{args[1]}.pdb: Calculating score")
@@ -152,21 +121,6 @@ class SFLA:
         args = [final, unique_id, quater, trans_coord]
         return args
     
-    def generate_init_population(self):
-        logger.info(f"Generating initial population (Number of frogs: {self.frogs})")
-        (
-            self.rand_trans_coord,
-            self.receptor_max_diameter,
-            self.ligand_max_diameter,
-        ) = poses.calculate_initial_poses(self.receptor, self.ligand, self.frogs)
-        
-        with concurrent.futures.ProcessPoolExecutor() as executor:
-            score_args = [self.generate_one_frog(frog_id, initial=True) for frog_id in range(self.frogs)]
-            results = executor.map(self.find_score, score_args)
-            for r in results:
-                if r:
-                    self.conformation_data[r[1]] = [r[0], r[2], r[3]]
-
     def generate_init_population_dfire(self):
         logger.info(f"Generating initial population (Number of frogs: {self.frogs})")
         (
@@ -218,15 +172,15 @@ class SFLA:
             im: memeplex_idx
         """
         im, iter_idx = args 
-        memplex = self.memeplexes[im]
-        extracted_conformation_data = {int(item):self.conformation_data.get(item) for item in memplex}
+        memeplex = self.memeplexes[im]
+        extracted_conformation_data = {int(item):self.conformation_data.get(item) for item in memeplex}
         
         for idx in range(self.no_of_mutation):
             logger.info(f"Iteration {iter_idx} -- Local search of Memeplex {im + 1}: Mutation {idx + 1}/{self.no_of_mutation}")
             unique_id = self.frogs + im + 1
             rValue = rng.random(self.FrogsEach) * self.weights                      # random value with probability weights
             subindex = np.sort(np.argsort(rValue)[::-1][0:self.q])                  # index of selected frogs in memeplex
-            submemeplex = memplex[subindex] 
+            submemeplex = memeplex[subindex] 
 
             #--- Improve the worst frog's position ---#
             # Learn from local best Pb #
@@ -267,81 +221,10 @@ class SFLA:
 
             shutil.move(os.path.join('poses/', 'out'+str(int(unique_id))+'.pdb'), os.path.join('poses/', 'out'+ str(int(submemeplex[self.q-1])) + '.pdb'))
             extracted_conformation_data[int(submemeplex[self.q-1])] = [results[0], results[2], results[3]]
-            memplex = np.array(sorted(extracted_conformation_data, key = lambda x: extracted_conformation_data[x][0], reverse=True))
+            memeplex = np.array(sorted(extracted_conformation_data, key = lambda x: extracted_conformation_data[x][0], reverse=True))
             logger.info(f"Iteration {iter_idx} -- Local search of Memeplex {im + 1}: pose moved to out{int(submemeplex[self.q-1])}.pdb ::: Mutation {idx + 1}/{self.no_of_mutation} finished")
 
-        return (extracted_conformation_data, im, memplex)
-
-    def local_search_one_memeplex(self, args):
-        """
-            im: memeplex_idx
-        """
-        im, iter_idx = args 
-        memplex = self.memeplexes[im]
-        extracted_conformation_data = {int(item):self.conformation_data.get(item) for item in memplex}
-        
-        for idx in range(self.no_of_mutation):
-            logger.info(f"Iteration {iter_idx} -- Local search of Memeplex {im + 1}: Mutation {idx + 1}/{self.no_of_mutation}")
-            unique_id = self.frogs + im + 1
-            rValue = rng.random(self.FrogsEach) * self.weights                      # random value with probability weights
-            subindex = np.sort(np.argsort(rValue)[::-1][0:self.q])                  # index of selected frogs in memeplex
-            submemeplex = memplex[subindex] 
-
-            #--- Improve the worst frog's position ---#
-            # Learn from local best Pb #
-            Pb = extracted_conformation_data[int(submemeplex[0])]                               # mark the best frog in submemeplex
-            Pw = extracted_conformation_data[int(submemeplex[self.q - 1])]                      # mark the worst frog in submemeplex
-            quart_new, trans_coord = self.new_step(Pb[1], Pb[2], Pw[1], Pw[2])
-
-            globStep = False
-            censorship = False
-            
-            # Check feasible space and the performance #
-            if np.linalg.norm(self.receptor.COM - trans_coord) <= self.omega:
-                logger.info(f"Iteration {iter_idx} -- Memeplex {im + 1}(out{unique_id}.pdb): Learn from local best Pb")
-                final = self.ligand.tranformation(quart_new, trans_coord)   #final = np.array([Uq.rotate(i) for i in self.lig_atom])  
-                results = self.find_score([final, unique_id, quart_new, trans_coord])
-
-                if results[0] > Pw[0] and results[0] > 0:
-                    globStep = True
-            else: 
-                globStep = True
-
-            if globStep:
-                logger.info(f"Iteration {iter_idx} -- Memeplex {im + 1}(out{unique_id}.pdb): score didn't improve... Learn from global best Pb")
-                quart_new, trans_coord = self.new_step(self.Frog_gb[1], self.Frog_gb[2], Pw[1], Pw[2])
-              
-                if np.linalg.norm(self.receptor.COM - trans_coord) <= self.omega:
-                    final = self.ligand.tranformation(quart_new, trans_coord)   #final = np.array([Uq.rotate(i) for i in self.lig_atom])  
-                    results = self.find_score([final, unique_id, quart_new, trans_coord])
-                    if results[0] > Pw[0] and results[0] > 0:
-                        censorship = True
-                else:
-                    censorship = True
-
-            if censorship:
-                logger.info(f"Iteration {iter_idx} -- Memeplex {im + 1}(out{unique_id}.pdb): score didn't improve... generating a new frog")
-                params = self.generate_one_frog(unique_id)
-                results = self.find_score(params)            
-
-            shutil.move(os.path.join('poses/', 'out'+str(int(unique_id))+'.pdb'), os.path.join('poses/', 'out'+ str(int(submemeplex[self.q-1])) + '.pdb'))
-            extracted_conformation_data[int(submemeplex[self.q-1])] = [results[0], results[2], results[3]]
-            memplex = np.array(sorted(extracted_conformation_data, key = lambda x: extracted_conformation_data[x][0]))
-            logger.info(f"Iteration {iter_idx} -- Local search of Memeplex {im + 1}: pose moved to out{int(submemeplex[self.q-1])}.pdb ::: Mutation {idx + 1}/{self.no_of_mutation} finished")
-
-        return (extracted_conformation_data, im, memplex)
-    
-    def local_search(self, iter_idx):
-        self.Frog_gb = self.conformation_data[int(self.memeplexes[0][0])]
-
-        with concurrent.futures.ProcessPoolExecutor() as executor:
-            doargs = [[im, iter_idx] for im, _ in enumerate(self.memeplexes)]
-            results = executor.map(self.local_search_one_memeplex, doargs)
-            
-            for r in results:
-                if r:
-                    self.conformation_data.update(r[0])
-                    self.memeplexes[r[1]] = r[2]
+        return (extracted_conformation_data, im, memeplex)
 
     def local_search_dfire(self, iter_idx):
         self.Frog_gb = self.conformation_data[int(self.memeplexes[0][0])]
@@ -420,7 +303,6 @@ class SFLA:
         
         self.dfire_model = dfire.DFIRE()
 
-        # self.generate_init_population()
         self.generate_init_population_dfire()
         self.memeplexes = self.sort_frog()
         
@@ -446,6 +328,6 @@ if __name__ == "__main__":
     protein_name = args.pdb.split('/')[-1].split('_')[0]
     rec_lig_name = args.pdb.split('/')[-1].split('_')[1].split(':')
 
-    sfla = SFLA(frogs=400, mplx_no=40, no_of_iteration=n, no_of_mutation=10, q=6)  # TODO: 400, 40, n, 10, 6 
+    sfla = SFLA(frogs=500, mplx_no=50, no_of_iteration=n, no_of_mutation=10, q=6)  # TODO: 400, 40, n, 10, 6 
     #sfla = SFLA(frogs=50, mplx_no=10, no_of_iteration=n, no_of_mutation=2, q=4)
     sfla.run_sfla(str(args.pdb), protein_name, rec_lig_name[0], rec_lig_name[1])
