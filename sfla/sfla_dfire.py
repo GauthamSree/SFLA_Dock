@@ -58,37 +58,19 @@ class SFLA:
 
     def find_score_dfire(self, args):
         #logger.info(f"out{args[1]}.pdb: Calculating score")
-        output_file = self.write_to_file(args[0], args[1], args[2])
+        output_file = self.write_to_file(args[0], args[3])
         dfire_score = self.dfire_model(self.receptor, args[1], self.ligand, args[2])
         logger.info(f"{output_file} -- score = {dfire_score:.3f}")
-        return dfire_score, args[0], args[3], args[4], args[5], args[6]
+        return dfire_score, args[0], args[4], args[5], args[6], args[7]
 
-    def write_to_file(self, id, rec_new_coord, lig_new_coord):
+    def write_to_file(self, id:int, new_coord:np.ndarray):
         output_file = 'out' + str(id) + '.pdb'
         with open(os.path.join(self.mypath, output_file),'w') as out:
             in1 = open(self.receptor.pdb_file, "r")
             in2 = open(self.ligand.pdb_file, "r")
-            for indexing, line in enumerate(in1):
+            for line in in1:
                 if "ATOM" in line:
-                    l = line.split()
-                    l[0] = l[0].ljust(5)
-                    l[1] = l[1].rjust(5)
-                    l[2] = l[2].ljust(3)
-                    l[3] = l[3].ljust(3)
-                    l[4] = line[21]
-                    l[5] = ("%4d" % (int(line[22:26]))).rjust(4)
-                    l[6] = ("%8.3f" % (float(rec_new_coord[indexing][0]))).rjust(8)
-                    l[7] = ("%8.3f" % (float(rec_new_coord[indexing][1]))).rjust(8)
-                    l[8] = ("%8.3f" % (float(rec_new_coord[indexing][2]))).rjust(8)
-                    out.write(
-                        "{0} {1}  {2} {3} {4}{5}    {6}{7}{8}".format(
-                            l[0], l[1], l[2], l[3], l[4], l[5], l[6], l[7], l[8]
-                        )
-                    )
-                    out.write("\n")
-            # for line in in1:
-            #     if "ATOM" in line:
-            #         out.write(line)
+                    out.write(line)
             for indexing, line in enumerate(in2):
                 if "ATOM" in line:
                     l = line.split()
@@ -98,9 +80,9 @@ class SFLA:
                     l[3] = l[3].ljust(3)
                     l[4] = line[21]
                     l[5] = ("%4d" % (int(line[22:26]))).rjust(4)
-                    l[6] = ("%8.3f" % (float(lig_new_coord[indexing][0]))).rjust(8)
-                    l[7] = ("%8.3f" % (float(lig_new_coord[indexing][1]))).rjust(8)
-                    l[8] = ("%8.3f" % (float(lig_new_coord[indexing][2]))).rjust(8)
+                    l[6] = ("%8.3f" % (float(new_coord[indexing][0]))).rjust(8)
+                    l[7] = ("%8.3f" % (float(new_coord[indexing][1]))).rjust(8)
+                    l[8] = ("%8.3f" % (float(new_coord[indexing][2]))).rjust(8)
                     out.write(
                         "{0} {1}  {2} {3} {4}{5}    {6}{7}{8}".format(
                             l[0], l[1], l[2], l[3], l[4], l[5], l[6], l[7], l[8]
@@ -114,11 +96,13 @@ class SFLA:
         if self.use_anm:
             receptor_coordinates = self.receptor.tranformation(do_rot_trans=False, do_anm=True, anm_extent=rec_nm)
             ligand_coordinates = self.ligand.tranformation(quater, trans_coord, do_anm=True, anm_extent=lig_nm)
-        else:
-            ligand_coordinates = self.ligand.tranformation(quater, trans_coord)
 
-        args = [unique_id, receptor_coordinates, ligand_coordinates, quater, trans_coord, rec_nm, lig_nm]
+        ligand_coordinates_without_anm = self.ligand.tranformation(quater, trans_coord)
+        ligand_coordinates = ligand_coordinates if self.use_anm else ligand_coordinates_without_anm 
+
+        args = [unique_id, receptor_coordinates, ligand_coordinates, ligand_coordinates_without_anm, quater, trans_coord, rec_nm, lig_nm]
         return args
+
 
     def normalize_vector(self, v):
         """Normalizes a given vector"""
@@ -163,10 +147,10 @@ class SFLA:
                 lig_nm = rng.normal(anm.DEFAULT_EXTENT_MU, anm.DEFAULT_EXTENT_SIGMA, self.ligand.num_nmodes)
                 lig_nm = np.clip(lig_nm, anm.MIN_EXTENT, anm.MAX_EXTENT)
                 ligand_coordinates = self.ligand.tranformation(quater, trans_coord, do_anm=True, anm_extent=lig_nm)
-        else:
-            ligand_coordinates = self.ligand.tranformation(quater, trans_coord)
-
-        args = [unique_id, receptor_coordinates, ligand_coordinates, quater, trans_coord, rec_nm, lig_nm]
+        
+        ligand_coordinates_without_anm = self.ligand.tranformation(quater, trans_coord)
+        ligand_coordinates = ligand_coordinates if self.use_anm else ligand_coordinates_without_anm
+        args = [unique_id, receptor_coordinates, ligand_coordinates, ligand_coordinates_without_anm, quater, trans_coord, rec_nm, lig_nm]
         return args
 
     def generate_init_population_dfire(self):
@@ -406,6 +390,6 @@ if __name__ == "__main__":
     protein_name = args.pdb.split('/')[-1].split('_')[0]
     rec_lig_name = args.pdb.split('/')[-1].split('_')[1].split(':')
 
-    sfla = SFLA(frogs=500, mplx_no=50, no_of_iteration=n, no_of_mutation=10, q=6)  # TODO: 400, 40, n, 10, 6 
+    sfla = SFLA(frogs=400, mplx_no=40, no_of_iteration=n, no_of_mutation=10, q=6)  # TODO: 400, 40, n, 10, 6 
     #sfla = SFLA(frogs=50, mplx_no=10, no_of_iteration=n, no_of_mutation=2, q=4)
     sfla.run_sfla(str(args.pdb), protein_name, rec_lig_name[0], rec_lig_name[1])

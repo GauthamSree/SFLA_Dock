@@ -20,6 +20,7 @@ scripts/
 
 #testing
 debug*
+poses_old/
 report_4dn4_0.txt
 4dn4/
 4dn4_test/

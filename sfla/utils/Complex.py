@@ -149,8 +149,8 @@ class Complex:
         self.atom_coord = atom_coord
 
 
-    def find_center_of_mass(self):
-        c = (self.atom_coord.T * self.atom_mass).T
+    def find_center_of_mass(self, atom_coord=None):
+        c = (atom_coord.T * self.atom_mass).T if atom_coord is not None else (self.atom_coord.T * self.atom_mass).T
         total_mass = np.sum(self.atom_mass)
         com = np.divide(np.sum(c, axis=0), total_mass)
         return com
@@ -159,55 +159,68 @@ class Complex:
         self.pdb_file = self.pdb_preprocess(file=self.name)
         self.chaindef()
 
-    def move_to_origin(self, inplace=False):
+    def move_to_origin(self, inplace=False, atom_coord:np.ndarray=None):
         """Moves the structure to the origin of coordinates"""
-        
-        com = self.find_center_of_mass()
+        com = self.find_center_of_mass(atom_coord) if atom_coord is not None else self.find_center_of_mass()
         
         if np.allclose(com, 1e-14):
-            if not inplace:
-                return self.atom_coord
+            if not inplace and atom_coord is None:
+                return self.atom_coord.copy()
+            if not inplace and atom_coord is not None:
+                return atom_coord, com
         
-        if inplace:
+        if inplace and atom_coord is None:
             self.atom_coord = self.translation(self.atom_coord, -com)
             self.COM = self.find_center_of_mass() 
 
         else:
-            return self.translation(self.atom_coord, -com)
+            if atom_coord is not None:
+                return self.translation(atom_coord, -com), com
+            else:
+                return self.translation(self.atom_coord, -com)
 
     def move_back(self, atoms, center):
         if np.allclose(center, 1e-14):
             return atoms
         return self.translation(atoms, center)
 
-    def use_normal_modes(self, anm_extent, coord=None):
-        if coord:
-            pose = coord
-        else:
-            pose = self.atom_coord
-
+    def use_normal_modes(self, anm_extent):
+        pose = self.atom_coord.copy()
         if self.num_nmodes > 0:
             for i in range(self.num_nmodes):
                 pose += self.n_modes[i] * anm_extent[i]
+        return pose
     
     def translation(self, atoms, trans_coord):
         return atoms + trans_coord
 
-    def rotation(self, q):
-        atm_org = self.move_to_origin()
-        atm_rot = np.array([q.rotate(i) for i in atm_org])
-        final = self.move_back(atm_rot, self.COM)
+    def rotation(self, q, atom_coord:np.ndarray=None):
+        if atom_coord is None:
+            atm_org = self.move_to_origin()
+            atm_rot = np.array([q.rotate(i) for i in atm_org])
+            final = self.move_back(atm_rot, self.COM)
+        else:
+            atm_org, com = self.move_to_origin(atom_coord=atom_coord)
+            atm_rot = np.array([q.rotate(i) for i in atm_org])
+            final = self.move_back(atm_rot, com)
+        
         return final
 
-    def tranformation(self, q=None, trans_coord=None, do_rot_trans=True, do_anm=False, anm_extent=None):
+    def tranformation(self, q=None, trans_coord=None, do_rot_trans=True, do_anm=False, anm_extent:np.ndarray=None):
         if do_anm:
-            coordinates = self.use_normal_modes(anm_extent) 
+            anm_coordinates = self.use_normal_modes(anm_extent) 
             if do_rot_trans:
-                new_coord = self.rotation(q)
+                new_coord = self.rotation(q=q, atom_coord=anm_coordinates)
                 coordinates = self.translation(new_coord, trans_coord)
-        if do_rot_trans:
+            else:
+                coordinates = anm_coordinates
+        if not do_anm and do_rot_trans:
             new_coord = self.rotation(q)
             coordinates = self.translation(new_coord, trans_coord)
+        
+        if not do_anm and not do_rot_trans:
+            coordinates = self.atom_coord
+        
         return coordinates
 
     def __repr__(self):
