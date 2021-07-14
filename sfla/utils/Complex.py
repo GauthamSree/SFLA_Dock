@@ -11,7 +11,7 @@ warnings.simplefilter('ignore', PDBConstructionWarning)
 
 class Complex:
 
-    def __init__(self, name, path):
+    def __init__(self, name, path, num_nmodes):
         self.path = path
         self.chain = [i for i in name]
         self.name = name + '_model_st'
@@ -30,7 +30,8 @@ class Complex:
                    'PHECE1', 'PHECE2', 'PHECZ', 'THRCG2', 'TRPCG', 'TRPCD1', 'TRPCD2', 'TRPCE2', 'TRPCE3', 'TRPCZ2',
                    'TRPCZ3', 'TRPCH2', 'TYRCG', 'TYRCD1', 'TYRCD2'],
                     ['ILECG2', 'ILECD1', 'ILECD', 'LEUCD1', 'LEUCD2', 'METCE', 'VALCG1', 'VALCG2'], ['CYSSG']]
-        
+        self.num_nmodes = num_nmodes
+        self.n_modes: np.ndarray = np.array([])
         self.run()
 
     def pdb_preprocess(self, file):
@@ -50,7 +51,6 @@ class Complex:
         self.atom_coord = atom_coord
         self.atom_mass = np.array(atom_mass)
         self.COM = self.find_center_of_mass()
-        #self.move_to_origin(inplace=True)
 
         idx = 0
         with open(os.path.join(self.path, file + ".pdb"), "r") as pdb_in: 
@@ -180,6 +180,16 @@ class Complex:
             return atoms
         return self.translation(atoms, center)
 
+    def use_normal_modes(self, anm_extent, coord=None):
+        if coord:
+            pose = coord
+        else:
+            pose = self.atom_coord
+
+        if self.num_nmodes > 0:
+            for i in range(self.num_nmodes):
+                pose += self.n_modes[i] * anm_extent[i]
+    
     def translation(self, atoms, trans_coord):
         return atoms + trans_coord
 
@@ -189,10 +199,16 @@ class Complex:
         final = self.move_back(atm_rot, self.COM)
         return final
 
-    def tranformation(self, q, trans_coord):
-        new_coord = self.rotation(q)
-        final = self.translation(new_coord, trans_coord)
-        return final
+    def tranformation(self, q=None, trans_coord=None, do_rot_trans=True, do_anm=False, anm_extent=None):
+        if do_anm:
+            coordinates = self.use_normal_modes(anm_extent) 
+            if do_rot_trans:
+                new_coord = self.rotation(q)
+                coordinates = self.translation(new_coord, trans_coord)
+        if do_rot_trans:
+            new_coord = self.rotation(q)
+            coordinates = self.translation(new_coord, trans_coord)
+        return coordinates
 
     def __repr__(self):
         return f"Complex: name = {self.name}, pdb_file_name = {self.pdb_file}"
