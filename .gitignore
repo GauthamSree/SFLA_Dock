@@ -20,15 +20,9 @@ scripts/
 
 #testing
 debug*
-poses_old/
-report_4dn4_0.txt
 4dn4/
-4dn4_test/
-4dn4_acc/
-4dn4_dfire/
 1exb/
-1exb_100/
-best_energy1.txt
+DataCheck/
 sfladock_old.sh
 sfladockNew.sh
 sfladock_poses.sh
