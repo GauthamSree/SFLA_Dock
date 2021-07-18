@@ -250,8 +250,10 @@ class SFLA:
                 results = self.find_score(args)
 
                 if results[0] < Pw[0]:
+                    #censorship = True
                     globStep = True
             else: 
+                # censorship = True
                 globStep = True
 
             if globStep:
@@ -326,7 +328,8 @@ class SFLA:
         for idx in range(self.no_of_iteration):
             logger.info(f"Local Search: {idx+1}/{self.no_of_iteration}")
             self.local_search(idx)
-            self.shuffle_memeplexes()
+            if rng.random() < 0.65:	
+                self.shuffle_memeplexes()
 
         directory = "native_" + protein_name
         final_path = os.path.join("./", directory)
@@ -371,7 +374,9 @@ class SFLA:
         for idx in range(5):
             logger.info(f"Local Search: {idx+1}/{5}")
             self.local_search(idx)
-            self.shuffle_memeplexes()
+            if rng.random() < 0.65:	
+                self.shuffle_memeplexes()
+            # self.shuffle_memeplexes()
 
     
 if __name__ == "__main__":

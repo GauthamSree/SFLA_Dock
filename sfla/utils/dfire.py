@@ -159,7 +159,10 @@ def get_dfire_objects(structure):
                 for atom in residue:
                     cur_atom_type = residue.get_resname() + atom.name
                     rnuma = r3_to_numerical[residue.get_resname()]
-                    anuma = atomnumber[cur_atom_type]
+                    try:
+                        anuma = atomnumber[cur_atom_type]
+                    except:
+                        anuma = atomnumber[residue.get_resname() + str(atom.name)[0]]
                     dfire_objects.append(DFIREObject(rnuma, anuma))
     
     return dfire_objects
