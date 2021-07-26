@@ -222,6 +222,90 @@ class SFLA:
         
         return (quart_new, trans_coord, new_rec_extent, new_lig_extent)
 
+    def new_step_test(self, local_best, local_worst):
+        w = 0.72
+        c1, c2 = 1.49, 1.49
+        quart_gbest, tran_coord_gbest, rec_extent_gbest, lig_extent_gbest = self.Frog_gb[1], self.Frog_gb[2], self.Frog_gb[3], self.Frog_gb[4]
+        quart_best, tran_coord_best, rec_extent_best, lig_extent_best = local_best[1], local_best[2], local_best[3], local_best[4]
+        quart_worst, tran_coord_worst, rec_extent_worst, lig_extent_worst = local_worst[1], local_worst[2], local_worst[3], local_worst[4]
+        
+        # quart_new = Quaternion.slerp(quart_worst, quart_best, rng.random())
+        b_quart = (c1*rng.random()*(quart_best - quart_worst) + c2*rng.random()*(quart_gbest - quart_worst)).normalised
+        quart_new = Quaternion.slerp(quart_worst, b_quart, w)
+        
+        shift_coord = c1*rng.random()*(tran_coord_gbest - tran_coord_worst) + c2*rng.random()*(tran_coord_best - tran_coord_worst)
+        trans_coord = w*tran_coord_worst + shift_coord
+        
+        new_rec_extent = rec_extent_worst
+        new_lig_extent = lig_extent_worst
+
+        if self.receptor.num_nmodes > 0:
+            delta_x = c1*rng.random()*(rec_extent_gbest - rec_extent_worst) + c2*rng.random()*(rec_extent_best - rec_extent_worst)
+            n = np.linalg.norm(delta_x)
+            if not np.allclose([0.0], [n]):
+                delta_x *= (self.step_nmodes / n)
+                new_rec_extent += delta_x
+                new_rec_extent = np.clip(new_rec_extent, anm.MIN_EXTENT, anm.MAX_EXTENT)
+        
+        if self.ligand.num_nmodes > 0:
+            delta_x = (lig_extent_best - lig_extent_worst) * rng.random()
+            delta_x = c1*rng.random()*(lig_extent_gbest - lig_extent_worst)  + c2*rng.random()*(lig_extent_best - lig_extent_worst)
+            n = np.linalg.norm(delta_x)
+
+            if not np.allclose([0.0], [n]):
+                delta_x *= (self.step_nmodes / n)
+                new_lig_extent += delta_x
+                new_lig_extent = np.clip(new_lig_extent, anm.MIN_EXTENT, anm.MAX_EXTENT)
+        
+        return (quart_new, trans_coord, new_rec_extent, new_lig_extent)
+
+
+    def local_search_one_memeplex_test(self, args):
+        """
+            im: memeplex_idx
+        """
+        im, iter_idx = args 
+        memeplex = self.memeplexes[im]
+        extracted_conformation_data = {int(item):self.conformation_data.get(item) for item in memeplex}
+        
+        for idx in range(self.no_of_mutation):
+            logger.info(f"Iteration {iter_idx} -- Local search of Memeplex {im + 1}: Mutation {idx + 1}/{self.no_of_mutation}")
+            unique_id = self.frogs + im + 1
+            rValue = rng.random(self.FrogsEach) * self.weights                      # random value with probability weights
+            subindex = np.sort(np.argsort(rValue)[::-1][0:self.q])                  # index of selected frogs in memeplex
+            submemeplex = memeplex[subindex] 
+
+            #--- Improve the worst frog's position ---#
+            # Learn from local best Pb #
+            Pb = extracted_conformation_data[int(submemeplex[0])]                               # mark the best frog in submemeplex
+            Pw = extracted_conformation_data[int(submemeplex[self.q - 1])]                      # mark the worst frog in submemeplex
+            
+            quart_new, trans_coord, new_rec_extent, new_lig_extent = self.new_step_test(Pb, Pw)
+            censorship = False
+            
+            # Check feasible space and the performance #
+            if np.linalg.norm(self.receptor.COM - trans_coord) <= self.omega:
+                logger.info(f"Iteration {iter_idx} -- Memeplex {im + 1}(out{unique_id}.pdb): Learn from local best Pb")
+                args = self.transform_complex(unique_id, quart_new, trans_coord, new_rec_extent, new_lig_extent)
+                results = self.find_score(args)
+
+                if results[0] < Pw[0]:
+                    censorship = True
+            else: 
+                censorship = True
+
+            if censorship:
+                logger.info(f"Iteration {iter_idx} -- Memeplex {im + 1}(out{unique_id}.pdb): score didn't improve... generating a new frog")
+                params = self.generate_one_frog(unique_id)
+                results = self.find_score(params)
+
+            shutil.move(os.path.join('poses/', 'out'+str(int(unique_id))+'.pdb'), os.path.join('poses/', 'out'+ str(int(submemeplex[self.q-1])) + '.pdb'))
+            extracted_conformation_data[int(submemeplex[self.q-1])] = [results[0], results[2], results[3], results[4], results[5]]
+            memeplex = np.array(sorted(extracted_conformation_data, key = lambda x: extracted_conformation_data[x][0], reverse=True))
+            logger.info(f"Iteration {iter_idx} -- Local search of Memeplex {im + 1}: pose moved to out{int(submemeplex[self.q-1])}.pdb ::: Mutation {idx + 1}/{self.no_of_mutation} finished")
+
+        return (extracted_conformation_data, im, memeplex)
+
     def local_search_one_memeplex(self, args):
         """
             im: memeplex_idx
@@ -256,10 +340,10 @@ class SFLA:
 
                 if results[0] < Pw[0]:
                     censorship = True
-                    # globStep = True  // global off
+                    # globStep = True
             else: 
                 censorship = True
-                # globStep = True //// global off
+                # globStep = True
 
             if globStep:
                 logger.info(
@@ -335,9 +419,9 @@ class SFLA:
         for idx in range(self.no_of_iteration):
             logger.info(f"Local Search: {idx+1}/{self.no_of_iteration}")
             self.local_search(idx+1)
-            if rng.random() < 0.65:	
-                self.shuffle_memeplexes()
-            # self.shuffle_memeplexes()
+            self.shuffle_memeplexes()
+            # if rng.random() < 0.65:	
+            #     self.shuffle_memeplexes()
 
         directory = "native_" + protein_name
         final_path = os.path.join("./", directory)
@@ -351,8 +435,7 @@ class SFLA:
                 unique_id = int(memeplex[0])
                 best_eng.write(f"Memeplex {im+1} (out{str(unique_id)}.pdb) --- Score: {self.conformation_data[unique_id][0]}\n")
                 shutil.move(os.path.join("poses/", "out" + str(unique_id) + ".pdb"), directory)
-
-        logger.info(f"Saving the all frog energy.")       
+        
         with open("all_frog_energy.txt", 'w') as all_frog:
             for key, value in self.conformation_data.items():
                 all_frog.write(f"out{key}.pdb --- Score = {value[0]}\n")
@@ -383,9 +466,9 @@ class SFLA:
         for idx in range(5):
             logger.info(f"Local Search: {idx+1}/{5}")
             self.local_search(idx)
-            if rng.random() < 0.65:	
-                self.shuffle_memeplexes()
-            # self.shuffle_memeplexes()
+            # if rng.random() < 0.65:	
+            #     self.shuffle_memeplexes()
+            self.shuffle_memeplexes()
 
     
 if __name__ == "__main__":

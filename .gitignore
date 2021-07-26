@@ -17,18 +17,20 @@ molecule.o
 clean.bash
 src/
 scripts/
-Result1/
-Result2/
+Result*/
 
 #testing
 debug*
-4dn4/
+4dn4*/
+2cfh/
+2nz8/
+3lvk/
 1exb/
+4fqi/
+native_*/
 DataCheck/
-NewData/
-NewData1/
-NewData2/
-NewData3/
+NewData*/
 sfladock_old.sh
 sfladockNew.sh
 sfladock_poses.sh
+report_final.txt

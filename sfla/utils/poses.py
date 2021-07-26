@@ -28,7 +28,7 @@ def calculate_initial_poses(receptor: Complex, ligand: Complex, num_points: int,
 
     distances_matrix_rec = distance.pdist(receptor.atom_coord)
     receptor_max_diameter = np.max(distances_matrix_rec)
-    distances_matrix_lig = distance.pdist(ligand.atom_coord )
+    distances_matrix_lig = distance.pdist(ligand.atom_coord)
     ligand_max_diameter = np.max(distances_matrix_lig)
     surface_distance = ligand_max_diameter / divide_by
 
@@ -61,3 +61,11 @@ def generate_new_pose(rec_coord, ligand_max_diameter, rng):
     surface_distance = ligand_max_diameter / 2.0
     trans_coord = (rng.random()) * surface_distance + (1.5 * rec_coord)
     return trans_coord
+
+# def generate_new_pose(rec_coord, ligand_max_diameter, rng):
+#     rec_norm =  np.linalg.norm(rec_coord)
+#     u = rec_coord
+#     if not np.isnan(rec_norm) and rec_norm > 0.00001:
+#         u = rec_coord/rec_norm
+#     trans_coord = ((rng.random()) * 10.0 + 2) * u + rec_coord
+#     return trans_coord
