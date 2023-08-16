@@ -33,3 +33,20 @@ sfladock.sh includes the code to analyse the result. For analysis, an additional
 
 **Reference**
 1. https://github.com/maxibor/meetdock
+
+
+**Publication**
+
+Link: https://ieeexplore.ieee.org/document/9793129
+```
+@INPROCEEDINGS{9793129,
+  author={Sunny, Sharon and Sreekumar, Gautham and B, Jayaraj P.},
+  booktitle={2022 IEEE International Conference on Distributed Computing and Electrical Circuits and Electronics (ICDCECE)}, 
+  title={SFLADock: A Memetic Protein-Protein Docking Algorithm}, 
+  year={2022},
+  volume={},
+  number={},
+  pages={1-6},
+  doi={10.1109/ICDCECE53908.2022.9793129}}
+```
+
